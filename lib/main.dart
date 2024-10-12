@@ -29,6 +29,12 @@ class MyApp extends StatelessWidget {
               return const Center(child: CircularProgressIndicator());
             } else if (state is AuthAuthenticatedState) {
               return const HomeScreen();
+            } else if (state is AuthAuthenticatedState) {
+              return const DepositScreen();
+            } else if (state is AuthAuthenticatedState) {
+              return const DepositAddScreen();
+            } else if (state is AuthAuthenticatedState) {
+              return const ExpenseScreen();
             } else if (state is AuthUnauthenticatedState) {
               return LoginScreen();
             } else if (state is AuthErrorState) {

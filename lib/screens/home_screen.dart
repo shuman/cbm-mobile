@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../auth/auth_bloc.dart';
+import '../auth/auth_bloc.dart'; // Assuming your AuthBloc is here
+import './widgets/custom_bottom_nav_bar.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -9,50 +10,56 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Cobuild Manager'),
+        title: const Text('Dashboard'),
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () {
-              // Logout action
+              // Trigger the LogoutEvent in the AuthBloc
               context.read<AuthBloc>().add(LogoutEvent());
+              // Navigate to the login screen
+              Navigator.pushNamed(context, '/login');
             },
           ),
         ],
       ),
-      backgroundColor: Color(0xFFF0F0F0),
+      backgroundColor: Colors.white,
       body: Padding(
         padding: const EdgeInsets.all(8.0),
         child: GridView.count(
-          crossAxisCount: 2,
-          crossAxisSpacing: 20,
-          mainAxisSpacing: 20,
+          crossAxisCount: 3,
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
           children: [
-            _buildIconCard(context, Icons.attach_money, 'Add Deposit', () {
+            _buildIconCard(context, Icons.add_circle_outline, 'Add Deposit',
+                () {
               Navigator.pushNamed(context, '/deposit_add');
             }),
-            _buildIconCard(context, Icons.shopping_cart, 'Expense', () {
+            _buildIconCard(context, Icons.receipt, 'Add Expense', () {
               Navigator.pushNamed(context, '/expense');
             }),
-            _buildIconCard(context, Icons.report, 'Reports', () {
-              // Navigate to Reports screen (if you have one)
+            _buildIconCard(context, Icons.local_atm, 'Member Invoice', () {
+              // Add your logic here
             }),
-            _buildIconCard(context, Icons.settings, 'Settings', () {
-              // Navigate to Settings screen (if you have one)
+            _buildIconCard(context, Icons.build, 'Vendors', () {
+              // Add your logic here
+            }),
+            _buildIconCard(context, Icons.playlist_add_check, 'Bill Payment',
+                () {
+              // Add your logic here
+            }),
+            _buildIconCard(context, Icons.money_off, 'Utility Payment', () {
+              // Add your logic here
+            }),
+            _buildIconCard(context, Icons.local_post_office, 'SMS', () {
+              // Add your logic here
             }),
             // Add more icons as needed
           ],
         ),
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home),label: 'Home'),
-          BottomNavigationBarItem( icon: Icon(Icons.attach_money), label: 'Deposit'),
-          BottomNavigationBarItem( icon: Icon(Icons.shopping_cart), label: 'Expense'),
-          BottomNavigationBarItem( icon: Icon(Icons.account_circle), label: 'Account'),
-          BottomNavigationBarItem( icon: Icon(Icons.settings), label: 'Settings'),
-        ],
+      bottomNavigationBar: CustomBottomNavBar(
+        currentIndex: 0, // Set the active index for this screen
         onTap: (index) {
           if (index == 0) {
             Navigator.pushNamed(context, '/home');
@@ -66,7 +73,7 @@ class HomeScreen extends StatelessWidget {
             Navigator.pushNamed(context, '/settings');
           }
         },
-      )
+      ),
     );
   }
 
@@ -75,13 +82,16 @@ class HomeScreen extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Card(
-        elevation: 4,
+        elevation: 0,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 50),
-            const SizedBox(height: 10),
-            Text(label, style: const TextStyle(fontSize: 16)),
+            Icon(icon, size: 50, color: Color.fromARGB(255, 253, 112, 20)),
+            const SizedBox(height: 5),
+            Text(
+              label,
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
           ],
         ),
       ),
