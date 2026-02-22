@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import '../auth/auth_bloc.dart'; // Assuming your AuthBloc is here
-import './widgets/custom_bottom_nav_bar.dart';
+import 'package:go_router/go_router.dart';
+import '../theme/app_theme.dart';
+import '../utils/storage_util.dart';
+import 'widgets/app_drawer.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -10,90 +11,151 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Dashboard'),
+        title: FutureBuilder<String?>(
+          future: StorageUtil.getProjectName(),
+          builder: (context, snapshot) {
+            final projectName = snapshot.data;
+            return Text(projectName ?? 'Dashboard');
+          },
+        ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () {
-              // Trigger the LogoutEvent in the AuthBloc
-              context.read<AuthBloc>().add(LogoutEvent());
-              // Navigate to the login screen
-              Navigator.pushNamed(context, '/login');
+            icon: const Icon(Icons.swap_horiz),
+            tooltip: 'Switch Project',
+            onPressed: () async {
+              await StorageUtil.clearProjectId();
+              if (context.mounted) {
+                context.go('/project-selection');
+              }
             },
           ),
         ],
       ),
-      backgroundColor: Colors.white,
-      body: Padding(
-        padding: const EdgeInsets.all(8.0),
-        child: GridView.count(
-          crossAxisCount: 3,
-          crossAxisSpacing: 10,
-          mainAxisSpacing: 10,
+      drawer: const AppDrawer(currentRoute: '/home'),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildIconCard(context, Icons.add_circle_outline, 'Add Deposit',
-                () {
-              Navigator.pushNamed(context, '/deposit_add');
-            }),
-            _buildIconCard(context, Icons.receipt, 'Add Expense', () {
-              Navigator.pushNamed(context, '/expense');
-            }),
-            _buildIconCard(context, Icons.local_atm, 'Member Invoice', () {
-              // Add your logic here
-            }),
-            _buildIconCard(context, Icons.build, 'Vendors', () {
-              // Add your logic here
-            }),
-            _buildIconCard(context, Icons.playlist_add_check, 'Bill Payment',
-                () {
-              // Add your logic here
-            }),
-            _buildIconCard(context, Icons.money_off, 'Utility Payment', () {
-              // Add your logic here
-            }),
-            _buildIconCard(context, Icons.local_post_office, 'SMS', () {
-              // Add your logic here
-            }),
-            // Add more icons as needed
+            Text('Quick Navigation', style: AppTextStyles.h3),
+            const SizedBox(height: 16),
+            GridView.count(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: 2,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 1.2,
+              children: [
+                _buildQuickNavCard(
+                  context,
+                  icon: Icons.chat_bubble_outline,
+                  label: 'Messaging',
+                  color: AppColors.info,
+                  onTap: () => context.go('/messaging'),
+                ),
+                _buildQuickNavCard(
+                  context,
+                  icon: Icons.check_circle_outline,
+                  label: 'Decisions',
+                  color: AppColors.success,
+                  onTap: () => context.go('/decisions'),
+                ),
+                _buildQuickNavCard(
+                  context,
+                  icon: Icons.campaign,
+                  label: 'Notice Board',
+                  color: AppColors.warning,
+                  onTap: () => context.go('/notices'),
+                ),
+                _buildQuickNavCard(
+                  context,
+                  icon: Icons.folder_outlined,
+                  label: 'Files',
+                  color: Color(0xFF8b5cf6),
+                  onTap: () => context.go('/files'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 32),
+            Text('Management', style: AppTextStyles.h3),
+            const SizedBox(height: 16),
+            _buildMenuCard(
+              context,
+              icon: Icons.people_outline,
+              title: 'Members',
+              subtitle: 'Manage project members',
+              onTap: () => context.go('/members'),
+            ),
+            const SizedBox(height: 12),
+            _buildMenuCard(
+              context,
+              icon: Icons.account_balance_wallet_outlined,
+              title: 'Deposits',
+              subtitle: 'View and add deposits',
+              onTap: () => context.go('/deposits'),
+            ),
+            const SizedBox(height: 12),
+            _buildMenuCard(
+              context,
+              icon: Icons.receipt_long_outlined,
+              title: 'Expenses',
+              subtitle: 'Track project expenses',
+              onTap: () => context.go('/expenses'),
+            ),
           ],
         ),
-      ),
-      bottomNavigationBar: CustomBottomNavBar(
-        currentIndex: 0, // Set the active index for this screen
-        onTap: (index) {
-          if (index == 0) {
-            Navigator.pushNamed(context, '/home');
-          } else if (index == 1) {
-            Navigator.pushNamed(context, '/deposit');
-          } else if (index == 2) {
-            Navigator.pushNamed(context, '/expense');
-          } else if (index == 3) {
-            Navigator.pushNamed(context, '/account');
-          } else if (index == 4) {
-            Navigator.pushNamed(context, '/settings');
-          }
-        },
       ),
     );
   }
 
-  Widget _buildIconCard(
-      BuildContext context, IconData icon, String label, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Card(
-        elevation: 0,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 50, color: Color.fromARGB(255, 253, 112, 20)),
-            const SizedBox(height: 5),
-            Text(
-              label,
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-          ],
+  Widget _buildQuickNavCard(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Card(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 40, color: color),
+              const SizedBox(height: 12),
+              Text(
+                label,
+                style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w600),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildMenuCard(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Card(
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: AppColors.primary.withOpacity(0.1),
+          child: Icon(icon, color: AppColors.primary),
+        ),
+        title: Text(title, style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w600)),
+        subtitle: Text(subtitle, style: AppTextStyles.caption),
+        trailing: Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.textSecondary),
+        onTap: onTap,
       ),
     );
   }

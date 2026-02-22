@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+</head>
+<body>
+    <h1>Laravel Reverb WebSocket Test</h1>
+    <div id="status">Disconnected</div>
+    <div id="logs" style="background: #f0f0f0; padding: 10px; margin-top: 20px; height: 400px; overflow-y: scroll; font-family: monospace; font-size: 12px;"></div>
+    
+    <script>
+        const logs = document.getElementById('logs');
+        const status = document.getElementById('status');
+        
+        function log(message) {
+            const time = new Date().toLocaleTimeString();
+            logs.innerHTML += `[${time}] ${message}<br>`;
+            logs.scrollTop = logs.scrollHeight;
+            console.log(message);
+        }
+        
+        log('Connecting to ws://127.0.0.1:8080/app/cobuild-key...');
+        status.textContent = 'Connecting...';
+        
+        const ws = new WebSocket('ws://127.0.0.1:8080/app/cobuild-key?protocol=7&client=js&version=8.4.0-rc2');
+        
+        ws.onopen = () => {
+            log('✓ Connected!');
+            status.textContent = 'Connected';
+            status.style.color = 'green';
+        };
+        
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                log(`✓ Received: ${data.event}`);
+                
+                if (data.event === 'pusher:connection_established') {
+                    const connectionData = JSON.parse(data.data);
+                    log(`  Socket ID: ${connectionData.socket_id}`);
+                } else if (data.event === 'pusher_internal:subscription_succeeded') {
+                    log(`  Subscribed to: ${data.channel}`);
+                } else if (data.event === 'message.sent') {
+                    const msgData = JSON.parse(data.data);
+                    log(`  Message: ${JSON.stringify(msgData.message.body)}`);
+                    log(`  From: ${msgData.message.user?.name || msgData.message.sender?.name}`);
+                } else {
+                    log(`  Data: ${JSON.stringify(data).substring(0, 100)}...`);
+                }
+            } catch (e) {
+                log(`✗ Parse error: ${e}`);
+                log(`  Raw: ${event.data.substring(0, 200)}...`);
+            }
+        };
+        
+        ws.onerror = (error) => {
+            log(`✗ WebSocket error: ${error}`);
+            status.textContent = 'Error';
+            status.style.color = 'red';
+        };
+        
+        ws.onclose = () => {
+            log('Connection closed');
+            status.textContent = 'Disconnected';
+            status.style.color = 'gray';
+        };
+        
+        // Test ping after connection
+        setTimeout(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+                log('Sending ping...');
+                ws.send(JSON.stringify({
+                    event: 'pusher:ping',
+                    data: {}
+                }));
+            }
+        }, 2000);
+    </script>
+</body>
+</html>

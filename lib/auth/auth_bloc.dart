@@ -1,6 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../services/auth_service.dart';
+import '../utils/storage_util.dart';
 
 // Events
 abstract class AuthEvent {}
@@ -23,7 +24,8 @@ class AuthLoadingState extends AuthState {}
 
 class AuthAuthenticatedState extends AuthState {
   final String token;
-  AuthAuthenticatedState(this.token);
+  final Map<String, dynamic>? user;
+  AuthAuthenticatedState(this.token, {this.user});
 }
 
 class AuthUnauthenticatedState extends AuthState {}
@@ -33,10 +35,15 @@ class AuthErrorState extends AuthState {
   AuthErrorState(this.message);
 }
 
+class Auth2FARequiredState extends AuthState {
+  final String twoFaToken;
+  final String message;
+  Auth2FARequiredState(this.twoFaToken, this.message);
+}
+
 // BLoC
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final AuthService authService;
-  final FlutterSecureStorage secureStorage = const FlutterSecureStorage();
 
   AuthBloc({required this.authService}) : super(AuthLoadingState()) {
     on<CheckAuthStatusEvent>(_checkAuthStatus);
@@ -46,33 +53,47 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
 
   Future<void> _checkAuthStatus(
       CheckAuthStatusEvent event, Emitter<AuthState> emit) async {
+    if (kDebugMode) debugPrint('[AuthBloc] CheckAuthStatus');
     emit(AuthLoadingState());
-    final token = await secureStorage.read(key: 'auth_token');
-    if (token != null) {
-      emit(AuthAuthenticatedState(token));
+    final token = await StorageUtil.getToken();
+    if (kDebugMode) debugPrint('[AuthBloc] Token: ${token != null ? "exists" : "null"}');
+    if (token != null && token.isNotEmpty) {
+      final user = await StorageUtil.getUser();
+      emit(AuthAuthenticatedState(token, user: user));
+      if (kDebugMode) debugPrint('[AuthBloc] -> Authenticated');
     } else {
       emit(AuthUnauthenticatedState());
+      if (kDebugMode) debugPrint('[AuthBloc] -> Unauthenticated');
     }
   }
 
   Future<void> _login(LoginEvent event, Emitter<AuthState> emit) async {
-  emit(AuthLoadingState());
-  try {
-    // Access static method using AuthService directly
-    final token = await AuthService.login(event.email, event.password);
-    if (token != '') {
-      await secureStorage.write(key: 'auth_token', value: token);
-      emit(AuthAuthenticatedState(token));
-    } else {
-      emit(AuthUnauthenticatedState());
+    if (kDebugMode) debugPrint('[AuthBloc] Login started');
+    emit(AuthLoadingState());
+    try {
+      final result = await AuthService.login(event.email, event.password);
+      if (kDebugMode) debugPrint('[AuthBloc] Login result: ${result.keys.join(", ")}');
+      
+      if (result['requires_2fa'] == true) {
+        emit(Auth2FARequiredState(
+          result['two_fa_token'],
+          result['message'] ?? 'Two-factor authentication required',
+        ));
+        return;
+      }
+      
+      if (result['success'] == true && result['token'] != null) {
+        emit(AuthAuthenticatedState(result['token'], user: result['user']));
+      } else {
+        emit(AuthErrorState(result['error'] ?? 'Login failed'));
+      }
+    } catch (e) {
+      emit(AuthErrorState('Login failed: ${e.toString()}'));
     }
-  } catch (e) {
-    emit(AuthErrorState('Login failed: ${e.toString()}'));
   }
-}
 
   Future<void> _logout(LogoutEvent event, Emitter<AuthState> emit) async {
-    await secureStorage.delete(key: 'auth_token');
+    await StorageUtil.clearAll();
     emit(AuthUnauthenticatedState());
   }
 }

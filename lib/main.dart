@@ -1,59 +1,72 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'screens/login_screen.dart';
-import 'screens/home_screen.dart';
-import 'screens/deposit_screen.dart';
-import 'screens/deposit_add_screen.dart';
-import 'screens/expense_screen.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:go_router/go_router.dart';
 import 'auth/auth_bloc.dart';
 import 'services/auth_service.dart';
+import 'services/notification_service.dart';
+import 'services/message_notification_manager.dart';
+import 'theme/app_theme.dart';
+import 'router/app_router.dart';
+import 'router/router_notifier.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: ".env");
+  await NotificationService().initialize();
+  await NotificationService().requestPermissions();
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
   @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  late final AuthBloc _authBloc;
+  late final RouterNotifier _routerNotifier;
+  late final GoRouter _router;
+  StreamSubscription<AuthState>? _authSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _authBloc = AuthBloc(authService: AuthService())..add(CheckAuthStatusEvent());
+    _routerNotifier = RouterNotifier(_authBloc);
+    _router = AppRouter.createRouter(_routerNotifier);
+
+    _authSubscription = _authBloc.stream.listen(_onAuthStateChanged);
+  }
+
+  void _onAuthStateChanged(AuthState state) {
+    if (state is AuthAuthenticatedState) {
+      MessageNotificationManager().start();
+    } else if (state is AuthUnauthenticatedState) {
+      MessageNotificationManager().stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    MessageNotificationManager().stop();
+    _routerNotifier.dispose();
+    _authBloc.close();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      create: (context) =>
-          AuthBloc(authService: AuthService())..add(CheckAuthStatusEvent()),
-      child: MaterialApp(
-        title: 'Admin Portal',
-        theme: ThemeData(primarySwatch: Colors.blue),
-        home: BlocBuilder<AuthBloc, AuthState>(
-          builder: (context, state) {
-            if (state is AuthLoadingState) {
-              return const Center(child: CircularProgressIndicator());
-            } else if (state is AuthAuthenticatedState) {
-              return const HomeScreen();
-            } else if (state is AuthAuthenticatedState) {
-              return const DepositScreen();
-            } else if (state is AuthAuthenticatedState) {
-              return const DepositAddScreen();
-            } else if (state is AuthAuthenticatedState) {
-              return const ExpenseScreen();
-            } else if (state is AuthUnauthenticatedState) {
-              return LoginScreen();
-            } else if (state is AuthErrorState) {
-              return Scaffold(
-                appBar: AppBar(title: const Text('Error')),
-                body: Center(child: Text(state.message)),
-              );
-            } else {
-              return const CircularProgressIndicator(); // Fallback state
-            }
-          },
-        ),
-        routes: {
-          '/login': (context) => LoginScreen(),
-          '/home': (context) => const HomeScreen(),
-          '/deposit': (context) => const DepositScreen(),
-          '/deposit_add': (context) => const DepositAddScreen(),
-          '/expense': (context) => const ExpenseScreen(),
-        },
+    return BlocProvider.value(
+      value: _authBloc,
+      child: MaterialApp.router(
+        title: 'CoBuild Manager',
+        theme: AppTheme.theme,
+        routerConfig: _router,
       ),
     );
   }

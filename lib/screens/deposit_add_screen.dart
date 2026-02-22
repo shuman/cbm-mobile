@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../services/api_service.dart';
-import './widgets/custom_bottom_nav_bar.dart';
-import './widgets/loading_screen.dart';
+import '../theme/app_theme.dart';
 
 class DepositAddScreen extends StatefulWidget {
   const DepositAddScreen({super.key});
 
   @override
-  _DepositAddScreenState createState() => _DepositAddScreenState();
+  State<DepositAddScreen> createState() => _DepositAddScreenState();
 }
 
 class _DepositAddScreenState extends State<DepositAddScreen> {
@@ -19,228 +19,209 @@ class _DepositAddScreenState extends State<DepositAddScreen> {
 
   List<dynamic> _members = [];
   List<dynamic> _depositTypes = [];
-  bool _hasError = false;
-  String? _resultMessage;
   bool isLoading = true;
+  bool isSubmitting = false;
 
   @override
   void initState() {
     super.initState();
-    loadPreData();
+    _loadFormData();
   }
 
-  Future<void> loadPreData() async {
-    await Future.wait([
-      _loadMembers(),
-      _loadDepositTypes(),
-    ]);
+  Future<void> _loadFormData() async {
+    try {
+      final results = await Future.wait([
+        ApiService.fetchMembers(),
+        ApiService.fetchDepositTypes(),
+      ]);
 
-    setState(() {
-      isLoading = false;
-    });
-  }
-
-  Future<void> _loadMembers() async {
-    final response = await ApiService.fetchMembers();
-    if (response['status_code'] == 200) {
+      if (!mounted) return;
       setState(() {
-        _members =
-            response['items']; // Assuming 'items' contains the member list
+        _members = results[0]['items'] ?? [];
+        _depositTypes = results[1]['items'] ?? [];
+        isLoading = false;
       });
-    }
-  }
-
-  Future<void> _loadDepositTypes() async {
-    final response = await ApiService.fetchDepositTypes();
-    if (response['status_code'] == 200) {
+    } catch (e) {
+      if (!mounted) return;
       setState(() {
-        _depositTypes = response[
-            'items']; // Assuming 'items' contains the deposit types list
+        isLoading = false;
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to load form data: ${e.toString()}'),
+          backgroundColor: AppColors.error,
+        ),
+      );
     }
   }
 
   Future<void> _submitForm() async {
-    if (_formKey.currentState!.validate()) {
-      _formKey.currentState!.save();
-      setState(() {
-        isLoading = true;
-      });
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
 
+    _formKey.currentState!.save();
+
+    if (!mounted) return;
+    setState(() {
+      isSubmitting = true;
+    });
+
+    try {
       final response = await ApiService.depositAdd({
         'member_id': _selectedMember,
         'deposit_type_id': _selectedType,
         'amount': _amount,
-        'description': _description,
+        'description': _description ?? '',
       });
 
+      if (!mounted) return;
       setState(() {
-        isLoading = false;
-
-        if (response['status'] == 200 || response['status_code'] == 200) {
-          // Success message
-          if (response['status_code'] == 200) {
-            _resultMessage = 'Success: ${response['status_message']}';
-            _hasError = false;
-          } else {
-            _resultMessage = 'Error: ${response['status_message']}';
-            _hasError = true;
-          }
-        } else {
-          // Error message if status_code is not 200
-          _resultMessage = 'Error: ${response['message']}';
-          _hasError = true;
-        }
+        isSubmitting = false;
       });
+
+      if (response['status_code'] == 200 || response['status'] == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(response['status_message'] ?? 'Deposit added successfully'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+        context.pop();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(response['message'] ?? 'Failed to add deposit'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        isSubmitting = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: ${e.toString()}'),
+          backgroundColor: AppColors.error,
+        ),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Add Deposit')),
+      appBar: AppBar(
+        title: const Text('Add Deposit'),
+      ),
       body: isLoading
-          ? Center(child: CircularProgressIndicator())
-          : Padding(
-              padding: const EdgeInsets.all(16.0),
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
               child: Form(
                 key: _formKey,
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     DropdownButtonFormField<String>(
                       value: _selectedMember,
-                      onChanged: (newValue) {
-                        setState(() {
-                          _selectedMember = newValue;
-                        });
-                      },
+                      decoration: const InputDecoration(
+                        labelText: 'Member',
+                        prefixIcon: Icon(Icons.person_outline),
+                      ),
                       items: _members.map<DropdownMenuItem<String>>((member) {
                         return DropdownMenuItem<String>(
-                          value: member[
-                              'id'], // Assuming 'id' is the unique identifier
-                          child: Text(member[
-                              'name']), // Assuming 'name' is the member name
+                          value: member['id'].toString(),
+                          child: Text(member['name'] ?? 'Unknown'),
                         );
                       }).toList(),
-                      decoration: InputDecoration(
-                        labelText: 'Select Member',
-                        focusedBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(
-                              color: Color.fromARGB(255, 253, 112, 20)),
-                        ),
-                      ),
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedMember = value;
+                        });
+                      },
                       validator: (value) =>
                           value == null ? 'Please select a member' : null,
                     ),
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
                       value: _selectedType,
-                      onChanged: (newValue) {
-                        setState(() {
-                          _selectedType = newValue;
-                        });
-                      },
+                      decoration: const InputDecoration(
+                        labelText: 'Deposit Type',
+                        prefixIcon: Icon(Icons.category_outlined),
+                      ),
                       items: _depositTypes.map<DropdownMenuItem<String>>((type) {
                         return DropdownMenuItem<String>(
-                          value: type['id'], // Assuming 'id' is the unique identifier
-                          child: Text(type['name']), // Assuming 'name' is the type name
+                          value: type['id'].toString(),
+                          child: Text(type['name'] ?? 'Unknown'),
                         );
                       }).toList(),
-                      decoration: InputDecoration(
-                        labelText: 'Select Deposit Type',
-                        focusedBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(
-                              color: Color.fromARGB(255, 253, 112, 20)),
-                        ),
-                      ),
-                      validator: (value) => value == null ? 'Please select a deposit type' : null,
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedType = value;
+                        });
+                      },
+                      validator: (value) =>
+                          value == null ? 'Please select a deposit type' : null,
                     ),
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
                     TextFormField(
-                      decoration: InputDecoration(
+                      decoration: const InputDecoration(
                         labelText: 'Amount',
-                        focusedBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(
-                              color: Color.fromARGB(255, 253, 112, 20)),
-                        ),
+                        prefixIcon: Icon(Icons.attach_money),
                       ),
-                      keyboardType: TextInputType.number,
-                      onSaved: (newValue) {
-                        _amount = double.tryParse(newValue ?? '0');
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      onSaved: (value) {
+                        _amount = double.tryParse(value ?? '0');
                       },
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return 'Please enter a valid amount';
+                          return 'Please enter an amount';
                         }
                         if (double.tryParse(value) == null) {
-                          return 'Amount must be a number';
+                          return 'Please enter a valid number';
+                        }
+                        if (double.parse(value) <= 0) {
+                          return 'Amount must be greater than 0';
                         }
                         return null;
                       },
                     ),
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
                     TextFormField(
-                      decoration: InputDecoration(
-                        labelText: 'Description',
-                        focusedBorder: UnderlineInputBorder(
-                          borderSide:
-                              BorderSide(color: Color.fromARGB(255, 253, 112, 20)),
-                        ),
+                      decoration: const InputDecoration(
+                        labelText: 'Description (Optional)',
+                        prefixIcon: Icon(Icons.notes),
+                        alignLabelWithHint: true,
                       ),
                       maxLines: 3,
-                      onSaved: (newValue) {
-                        _description = newValue;
+                      onSaved: (value) {
+                        _description = value;
                       },
                     ),
-                    SizedBox(height: 24),
-                    Row(
-                      mainAxisAlignment:
-                          MainAxisAlignment.end, // Align button to the right
-                      children: [
-                        ElevatedButton(
-                          onPressed: _submitForm,
-                          child: Text(
-                            'Submit',
-                            style: TextStyle(
-                              fontSize: 18,
-                              color: Color.fromARGB(255, 253, 112, 20),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 16),
-                    if (_resultMessage != null)
-                      Text(
-                        _resultMessage!,
-                        style: TextStyle(
-                          color: _hasError == false
-                              ? Colors.green
-                              : Colors.red,
-                          fontSize: 16,
-                        ),
+                    const SizedBox(height: 32),
+                    ElevatedButton(
+                      onPressed: isSubmitting ? null : _submitForm,
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
                       ),
+                      child: isSubmitting
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : const Text('Add Deposit'),
+                    ),
                   ],
                 ),
               ),
             ),
-      bottomNavigationBar: CustomBottomNavBar(
-        currentIndex: 1,
-        onTap: (index) {
-          if (index == 0) {
-            Navigator.pushNamed(context, '/home');
-          } else if (index == 1) {
-            Navigator.pushNamed(context, '/deposit');
-          } else if (index == 2) {
-            Navigator.pushNamed(context, '/expense');
-          } else if (index == 3) {
-            Navigator.pushNamed(context, '/account');
-          } else if (index == 4) {
-            Navigator.pushNamed(context, '/settings');
-          }
-        },
-      ),
     );
   }
 }

@@ -1,204 +1,245 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../services/api_service.dart';
-import './widgets/custom_bottom_nav_bar.dart';
+import '../theme/app_theme.dart';
 
 class ExpenseAddScreen extends StatefulWidget {
   const ExpenseAddScreen({super.key});
 
   @override
-  _ExpenseAddScreenState createState() => _ExpenseAddScreenState();
+  State<ExpenseAddScreen> createState() => _ExpenseAddScreenState();
 }
 
 class _ExpenseAddScreenState extends State<ExpenseAddScreen> {
   final _formKey = GlobalKey<FormState>();
   String? _selectedMember;
   String? _selectedType;
+  String? _title;
   String? _description;
   double? _amount;
 
-  bool _isLoading = false;
   List<dynamic> _members = [];
   List<dynamic> _expenseTypes = [];
-  bool _hasError = false;
-  String? _resultMessage;
+  bool isLoading = true;
+  bool isSubmitting = false;
 
   @override
   void initState() {
     super.initState();
-    _loadMembers();
-    _loadExpenseTypes();
+    _loadFormData();
   }
 
-  Future<void> _loadMembers() async {
-    final response = await ApiService.fetchMembers();
-    if (response['status_code'] == 200) {
-      setState(() {
-        _members =
-            response['items']; // Assuming 'items' contains the member list
-      });
-    }
-  }
+  Future<void> _loadFormData() async {
+    try {
+      final results = await Future.wait([
+        ApiService.fetchMembers(),
+        ApiService.fetchExpenseTypes(),
+      ]);
 
-  Future<void> _loadExpenseTypes() async {
-    final response = await ApiService.fetchExpenseTypes();
-    if (response['status_code'] == 200) {
+      if (!mounted) return;
       setState(() {
-        _expenseTypes = response[
-            'items']; // Assuming 'items' contains the Expense types list
+        _members = results[0]['items'] ?? [];
+        _expenseTypes = results[1]['items'] ?? [];
+        isLoading = false;
       });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        isLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to load form data: ${e.toString()}'),
+          backgroundColor: AppColors.error,
+        ),
+      );
     }
   }
 
   Future<void> _submitForm() async {
-    if (_formKey.currentState!.validate()) {
-      _formKey.currentState!.save();
-      setState(() {
-        _isLoading = true;
-      });
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
 
+    _formKey.currentState!.save();
+
+    if (!mounted) return;
+    setState(() {
+      isSubmitting = true;
+    });
+
+    try {
       final response = await ApiService.expenseAdd({
         'member_id': _selectedMember,
         'expense_type_id': _selectedType,
+        'title': _title ?? '',
         'amount': _amount,
-        'description': _description,
+        'description': _description ?? '',
       });
 
+      if (!mounted) return;
       setState(() {
-        _isLoading = false;
-
-        if (response['status'] == 200 || response['status_code'] == 200) {
-          // Success message
-          if (response['status_code'] == 200) {
-            _resultMessage = 'Success: ${response['status_message']}';
-            _hasError = false;
-          } else {
-            _resultMessage = 'Error: ${response['status_message']}';
-            _hasError = true;
-          }
-        } else {
-          // Error message if status_code is not 200
-          _resultMessage = 'Error: ${response['message']}';
-          _hasError = true;
-        }
+        isSubmitting = false;
       });
+
+      if (response['status_code'] == 200 || response['status'] == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(response['status_message'] ?? 'Expense added successfully'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+        context.pop();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(response['message'] ?? 'Failed to add expense'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        isSubmitting = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: ${e.toString()}'),
+          backgroundColor: AppColors.error,
+        ),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Add Expense')),
-      body: _isLoading
-          ? Center(child: CircularProgressIndicator())
-          : Padding(
-              padding: const EdgeInsets.all(16.0),
+      appBar: AppBar(
+        title: const Text('Add Expense'),
+      ),
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
               child: Form(
                 key: _formKey,
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    DropdownButtonFormField<String>(
-                      value: _selectedMember,
-                      onChanged: (newValue) {
-                        setState(() {
-                          _selectedMember = newValue;
-                        });
-                      },
-                      items: _members.map<DropdownMenuItem<String>>((member) {
-                        return DropdownMenuItem<String>(
-                          value: member[
-                              'id'], // Assuming 'id' is the unique identifier
-                          child: Text(member[
-                              'name']), // Assuming 'name' is the member name
-                        );
-                      }).toList(),
-                      decoration: InputDecoration(labelText: 'Select Member'),
-                      validator: (value) =>
-                          value == null ? 'Please select a member' : null,
-                    ),
-                    SizedBox(height: 16),
-                    DropdownButtonFormField<String>(
-                      value: _selectedType,
-                      onChanged: (newValue) {
-                        setState(() {
-                          _selectedType = newValue;
-                        });
-                      },
-                      items:
-                          _expenseTypes.map<DropdownMenuItem<String>>((type) {
-                        return DropdownMenuItem<String>(
-                          value: type[
-                              'id'], // Assuming 'id' is the unique identifier
-                          child: Text(
-                              type['name']), // Assuming 'name' is the type name
-                        );
-                      }).toList(),
-                      decoration:
-                          InputDecoration(labelText: 'Select Expense Type'),
-                      validator: (value) =>
-                          value == null ? 'Please select a Expense type' : null,
-                    ),
-                    SizedBox(height: 16),
                     TextFormField(
-                      decoration: InputDecoration(labelText: 'Amount'),
-                      keyboardType: TextInputType.number,
-                      onSaved: (newValue) {
-                        _amount = double.tryParse(newValue ?? '0');
+                      decoration: const InputDecoration(
+                        labelText: 'Title',
+                        prefixIcon: Icon(Icons.title),
+                      ),
+                      onSaved: (value) {
+                        _title = value;
                       },
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return 'Please enter a valid amount';
-                        }
-                        if (double.tryParse(value) == null) {
-                          return 'Amount must be a number';
+                          return 'Please enter a title';
                         }
                         return null;
                       },
                     ),
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      value: _selectedMember,
+                      decoration: const InputDecoration(
+                        labelText: 'Member',
+                        prefixIcon: Icon(Icons.person_outline),
+                      ),
+                      items: _members.map<DropdownMenuItem<String>>((member) {
+                        return DropdownMenuItem<String>(
+                          value: member['id'].toString(),
+                          child: Text(member['name'] ?? 'Unknown'),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedMember = value;
+                        });
+                      },
+                      validator: (value) =>
+                          value == null ? 'Please select a member' : null,
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      value: _selectedType,
+                      decoration: const InputDecoration(
+                        labelText: 'Expense Type',
+                        prefixIcon: Icon(Icons.category_outlined),
+                      ),
+                      items: _expenseTypes.map<DropdownMenuItem<String>>((type) {
+                        return DropdownMenuItem<String>(
+                          value: type['id'].toString(),
+                          child: Text(type['name'] ?? 'Unknown'),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedType = value;
+                        });
+                      },
+                      validator: (value) =>
+                          value == null ? 'Please select an expense type' : null,
+                    ),
+                    const SizedBox(height: 16),
                     TextFormField(
-                      decoration: InputDecoration(labelText: 'Description'),
-                      maxLines: 3,
-                      onSaved: (newValue) {
-                        _description = newValue;
+                      decoration: const InputDecoration(
+                        labelText: 'Amount',
+                        prefixIcon: Icon(Icons.attach_money),
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      onSaved: (value) {
+                        _amount = double.tryParse(value ?? '0');
+                      },
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter an amount';
+                        }
+                        if (double.tryParse(value) == null) {
+                          return 'Please enter a valid number';
+                        }
+                        if (double.parse(value) <= 0) {
+                          return 'Amount must be greater than 0';
+                        }
+                        return null;
                       },
                     ),
-                    SizedBox(height: 24),
-                    ElevatedButton(
-                      onPressed: _submitForm,
-                      child: Text('Submit'),
-                    ),
-                    SizedBox(height: 16),
-                    if (_resultMessage != null)
-                      Text(
-                        _resultMessage!,
-                        style: TextStyle(
-                          color: _hasError == false
-                              ? Colors.green
-                              : Colors.red,
-                          fontSize: 16,
-                        ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      decoration: const InputDecoration(
+                        labelText: 'Description (Optional)',
+                        prefixIcon: Icon(Icons.notes),
+                        alignLabelWithHint: true,
                       ),
+                      maxLines: 3,
+                      onSaved: (value) {
+                        _description = value;
+                      },
+                    ),
+                    const SizedBox(height: 32),
+                    ElevatedButton(
+                      onPressed: isSubmitting ? null : _submitForm,
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                      child: isSubmitting
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : const Text('Add Expense'),
+                    ),
                   ],
                 ),
               ),
             ),
-      bottomNavigationBar: CustomBottomNavBar(
-        currentIndex: 2,
-        onTap: (index) {
-          if (index == 0) {
-            Navigator.pushNamed(context, '/home');
-          } else if (index == 1) {
-            Navigator.pushNamed(context, '/deposit');
-          } else if (index == 2) {
-            Navigator.pushNamed(context, '/expense');
-          } else if (index == 3) {
-            Navigator.pushNamed(context, '/account');
-          } else if (index == 4) {
-            Navigator.pushNamed(context, '/settings');
-          }
-        },
-      ),
     );
   }
 }

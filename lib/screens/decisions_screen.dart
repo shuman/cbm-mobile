@@ -1,30 +1,28 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import 'widgets/app_drawer.dart';
 import 'widgets/empty_state.dart';
 
-class ExpenseScreen extends StatefulWidget {
-  const ExpenseScreen({super.key});
+class DecisionsScreen extends StatefulWidget {
+  const DecisionsScreen({super.key});
 
   @override
-  State<ExpenseScreen> createState() => _ExpenseScreenState();
+  State<DecisionsScreen> createState() => _DecisionsScreenState();
 }
 
-class _ExpenseScreenState extends State<ExpenseScreen> {
-  List<dynamic> expenses = [];
+class _DecisionsScreenState extends State<DecisionsScreen> {
+  List<dynamic> decisions = [];
   bool isLoading = true;
   String? error;
 
   @override
   void initState() {
     super.initState();
-    _loadExpenses();
+    _loadDecisions();
   }
 
-  Future<void> _loadExpenses() async {
+  Future<void> _loadDecisions() async {
     if (!mounted) return;
     setState(() {
       isLoading = true;
@@ -32,10 +30,10 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
     });
 
     try {
-      final response = await ApiService.fetchExpenses();
+      final response = await ApiService.fetchDecisions();
       if (!mounted) return;
       setState(() {
-        expenses = response['items'] ?? [];
+        decisions = response['items'] ?? [];
         isLoading = false;
       });
     } catch (e) {
@@ -51,17 +49,11 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Expenses'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: () => context.push('/expenses/add').then((_) => _loadExpenses()),
-          ),
-        ],
+        title: const Text('Decisions'),
       ),
-      drawer: const AppDrawer(currentRoute: '/expenses'),
+      drawer: const AppDrawer(currentRoute: '/decisions'),
       body: RefreshIndicator(
-        onRefresh: _loadExpenses,
+        onRefresh: _loadDecisions,
         child: isLoading
             ? const Center(child: CircularProgressIndicator())
             : error != null
@@ -71,56 +63,46 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
                       children: [
                         Icon(Icons.error_outline, size: 64, color: AppColors.error),
                         const SizedBox(height: 16),
-                        Text('Failed to load expenses', style: AppTextStyles.h3),
+                        Text('Failed to load decisions', style: AppTextStyles.h3),
                         const SizedBox(height: 8),
                         Text(error!, style: AppTextStyles.caption, textAlign: TextAlign.center),
                         const SizedBox(height: 24),
                         ElevatedButton(
-                          onPressed: _loadExpenses,
+                          onPressed: _loadDecisions,
                           child: const Text('Retry'),
                         ),
                       ],
                     ),
                   )
-                : expenses.isEmpty
-                    ? EmptyState(
-                        icon: Icons.receipt_long_outlined,
-                        title: 'No Expenses',
-                        message: 'No expenses have been added yet',
-                        action: ElevatedButton.icon(
-                          onPressed: () => context.push('/expenses/add').then((_) => _loadExpenses()),
-                          icon: const Icon(Icons.add),
-                          label: const Text('Add Expense'),
-                        ),
+                : decisions.isEmpty
+                    ? const EmptyState(
+                        icon: Icons.check_circle_outline,
+                        title: 'No Decisions',
+                        message: 'No decisions have been created yet',
                       )
                     : ListView.builder(
                         padding: const EdgeInsets.all(16),
-                        itemCount: expenses.length,
+                        itemCount: decisions.length,
                         itemBuilder: (context, index) {
-                          final expense = expenses[index];
-                          return _buildExpenseCard(expense);
+                          final decision = decisions[index];
+                          return _buildDecisionCard(decision);
                         },
                       ),
       ),
-      floatingActionButton: expenses.isNotEmpty
-          ? FloatingActionButton(
-              onPressed: () => context.push('/expenses/add').then((_) => _loadExpenses()),
-              child: const Icon(Icons.add),
-            )
-          : null,
     );
   }
 
-  Widget _buildExpenseCard(dynamic expense) {
-    final amount = expense['amount'] is num ? expense['amount'] : (double.tryParse(expense['amount']?.toString() ?? '0') ?? 0.0);
-    final title = expense['title']?.toString() ?? 'Untitled Expense';
-    final typeName = expense['expense_type']?['name']?.toString() ?? 'Unknown Type';
-    final createdAt = expense['created_at']?.toString() ?? '';
+  Widget _buildDecisionCard(dynamic decision) {
+    final status = decision['status']?.toString() ?? 'pending';
+    final statusColor = _getStatusColor(status);
+    final createdAt = decision['created_at']?.toString() ?? '';
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
-        onTap: () => _showExpenseDetails(expense),
+        onTap: () {
+          _showDecisionDetail(decision);
+        },
         borderRadius: BorderRadius.circular(8),
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -128,30 +110,38 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          typeName,
-                          style: AppTextStyles.caption,
-                        ),
-                      ],
+                    child: Text(
+                      decision['title']?.toString() ?? 'Untitled Decision',
+                      style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w600),
                     ),
                   ),
-                  Text(
-                    '\$${amount.toStringAsFixed(2)}',
-                    style: AppTextStyles.h3.copyWith(color: AppColors.error),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      status.toUpperCase(),
+                      style: AppTextStyles.caption.copyWith(
+                        color: statusColor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ],
               ),
+              if (decision['description'] != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  decision['description']?.toString() ?? '',
+                  style: AppTextStyles.bodySecondary,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -161,6 +151,15 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
                     _formatDate(createdAt),
                     style: AppTextStyles.caption,
                   ),
+                  if (decision['votes_count'] != null) ...[
+                    const SizedBox(width: 16),
+                    Icon(Icons.how_to_vote, size: 14, color: AppColors.textSecondary),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${decision['votes_count']} votes',
+                      style: AppTextStyles.caption,
+                    ),
+                  ],
                 ],
               ),
             ],
@@ -170,16 +169,29 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
     );
   }
 
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'approved':
+        return AppColors.success;
+      case 'rejected':
+        return AppColors.error;
+      case 'pending':
+        return AppColors.warning;
+      default:
+        return AppColors.textSecondary;
+    }
+  }
+
   String _formatDate(String dateStr) {
     try {
       final date = DateTime.parse(dateStr);
-      return DateFormat('dd MMM yyyy').format(date);
+      return '${date.day}/${date.month}/${date.year}';
     } catch (e) {
       return dateStr;
     }
   }
 
-  void _showExpenseDetails(dynamic expense) {
+  void _showDecisionDetail(dynamic decision) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -210,34 +222,25 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Expense Details', style: AppTextStyles.h2),
-                    const Divider(height: 24),
-                    _buildDetailRow('Title', expense['title'] ?? 'Untitled'),
-                    const SizedBox(height: 12),
-                    _buildDetailRow('Amount', '\$${expense['amount']?.toString() ?? '0.00'}'),
-                    const SizedBox(height: 12),
-                    _buildDetailRow('Type', expense['expense_type']?['name'] ?? 'N/A'),
-                    const SizedBox(height: 12),
-                    _buildDetailRow(
-                      'Category',
-                      expense['expense_type']?['expense_type_category']?['name'] ?? 'N/A',
+                    Text(
+                      decision['title']?.toString() ?? 'Untitled Decision',
+                      style: AppTextStyles.h2,
                     ),
+                    const SizedBox(height: 16),
+                    _buildDetailRow('Status', decision['status']?.toString() ?? 'pending'),
                     const SizedBox(height: 12),
-                    _buildDetailRow('Added By', expense['api_user']?['name'] ?? 'N/A'),
+                    _buildDetailRow('Created', _formatDate(decision['created_at']?.toString() ?? '')),
                     const SizedBox(height: 12),
-                    _buildDetailRow(
-                      'Date',
-                      expense['created_at'] != null
-                          ? DateFormat('dd MMM yyyy, hh:mm a').format(
-                              DateTime.parse(expense['created_at']),
-                            )
-                          : 'N/A',
-                    ),
-                    if (expense['description'] != null && expense['description'].toString().isNotEmpty) ...[
-                      const Divider(height: 24),
+                    if (decision['deadline'] != null)
+                      _buildDetailRow('Deadline', _formatDate(decision['deadline']?.toString() ?? '')),
+                    const Divider(height: 32),
+                    if (decision['description'] != null) ...[
                       Text('Description', style: AppTextStyles.h3),
                       const SizedBox(height: 8),
-                      Text(expense['description'], style: AppTextStyles.body),
+                      Text(
+                        decision['description']?.toString() ?? '',
+                        style: AppTextStyles.body,
+                      ),
                     ],
                   ],
                 ),
@@ -251,10 +254,9 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
 
   Widget _buildDetailRow(String label, String value) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
-          width: 120,
+          width: 100,
           child: Text(label, style: AppTextStyles.bodySecondary),
         ),
         Expanded(
