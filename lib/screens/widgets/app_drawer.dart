@@ -10,6 +10,16 @@ class AppDrawer extends StatelessWidget {
 
   const AppDrawer({super.key, required this.currentRoute});
 
+  Future<void> _closeDrawerThenNavigate(BuildContext context, String route) async {
+    if (Navigator.of(context).canPop()) {
+      Navigator.pop(context);
+      await Future<void>.delayed(Duration.zero);
+    }
+
+    if (!context.mounted) return;
+    context.go(route);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Drawer(
@@ -21,10 +31,9 @@ class AppDrawer extends StatelessWidget {
         ]),
         builder: (context, snapshot) {
           final user = snapshot.data?[0] as Map<String, dynamic>?;
-          final projectId = snapshot.data?[1] as String?;
           final projectName = snapshot.data?[2] as String?;
           final userName = user?['name'] ?? 'User';
-          
+
           return ListView(
             padding: EdgeInsets.zero,
             children: [
@@ -37,20 +46,20 @@ class AppDrawer extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     const CircleAvatar(
-                      radius: 30,
+                      radius: 28,
                       backgroundColor: Colors.white,
                       child: Icon(
                         Icons.person,
-                        size: 40,
+                        size: 36,
                         color: AppColors.primary,
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
                     Text(
                       userName,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 18,
+                        fontSize: 17,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -64,7 +73,7 @@ class AppDrawer extends StatelessWidget {
                       ),
                     if (projectName != null && projectName.isNotEmpty)
                       Padding(
-                        padding: const EdgeInsets.only(top: 4),
+                        padding: const EdgeInsets.only(top: 2),
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
@@ -101,8 +110,6 @@ class AppDrawer extends StatelessWidget {
                 title: 'Home',
                 route: '/home',
               ),
-              const Divider(),
-              _buildSectionHeader(context, 'Quick Navigation'),
               _buildNavItem(
                 context,
                 icon: Icons.chat_bubble_outline,
@@ -121,8 +128,6 @@ class AppDrawer extends StatelessWidget {
                 title: 'Notice Board',
                 route: '/notices',
               ),
-              const Divider(),
-              _buildSectionHeader(context, 'Management'),
               _buildNavItem(
                 context,
                 icon: Icons.folder_outlined,
@@ -152,16 +157,28 @@ class AppDrawer extends StatelessWidget {
                 leading: const Icon(Icons.swap_horiz, color: AppColors.primary),
                 title: const Text('Switch Project'),
                 onTap: () async {
-                  Navigator.pop(context);
+                  if (Navigator.of(context).canPop()) {
+                    Navigator.pop(context);
+                    await Future<void>.delayed(Duration.zero);
+                  }
+
+                  if (!context.mounted) return;
                   await StorageUtil.clearProjectId();
+                  if (!context.mounted) return;
                   context.go('/project-selection');
                 },
               ),
+              const Divider(),
               ListTile(
                 leading: const Icon(Icons.logout, color: AppColors.error),
                 title: const Text('Logout'),
-                onTap: () {
-                  Navigator.pop(context);
+                onTap: () async {
+                  if (Navigator.of(context).canPop()) {
+                    Navigator.pop(context);
+                    await Future<void>.delayed(Duration.zero);
+                  }
+
+                  if (!context.mounted) return;
                   context.read<AuthBloc>().add(LogoutEvent());
                   context.go('/login');
                 },
@@ -169,19 +186,6 @@ class AppDrawer extends StatelessWidget {
             ],
           );
         },
-      ),
-    );
-  }
-
-  Widget _buildSectionHeader(BuildContext context, String title) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      child: Text(
-        title,
-        style: AppTextStyles.caption.copyWith(
-          fontWeight: FontWeight.bold,
-          letterSpacing: 0.5,
-        ),
       ),
     );
   }
@@ -208,9 +212,8 @@ class AppDrawer extends StatelessWidget {
       ),
       selected: isSelected,
       selectedTileColor: AppColors.primary.withOpacity(0.1),
-      onTap: () {
-        Navigator.pop(context);
-        context.go(route);
+      onTap: () async {
+        await _closeDrawerThenNavigate(context, route);
       },
     );
   }

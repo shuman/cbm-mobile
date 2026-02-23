@@ -10,14 +10,14 @@ class ApiService {
       'Authorization': 'Bearer $token',
       'Content-Type': 'application/json',
     };
-    
+
     if (includeProjectId) {
       String? projectId = await StorageUtil.getProjectId();
       if (projectId != null && projectId.isNotEmpty) {
         headers['X-Project-ID'] = projectId;
       }
     }
-    
+
     return headers;
   }
 
@@ -160,6 +160,60 @@ class ApiService {
     }
   }
 
+  // Create a new channel
+  static Future<Map<String, dynamic>> createChannel({
+    required String name,
+    String? description,
+    required List<dynamic> memberIds,
+  }) async {
+    final headers = await _getHeaders();
+    final response = await http.post(
+      Uri.parse('$apiUrl/channel'),
+      headers: headers,
+      body: json.encode({
+        'name': name,
+        'description': description,
+        'member_ids': memberIds,
+      }),
+    );
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return json.decode(response.body);
+    } else {
+      final errorBody = json.decode(response.body);
+      throw Exception(errorBody['error'] ?? errorBody['message'] ?? 'Failed to create channel');
+    }
+  }
+
+  // Start a direct conversation
+  static Future<Map<String, dynamic>> startDirectConversation(dynamic userId) async {
+    final headers = await _getHeaders();
+    final response = await http.post(
+      Uri.parse('$apiUrl/direct-conversations'),
+      headers: headers,
+      body: json.encode({'user_id': userId}),
+    );
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return json.decode(response.body);
+    } else {
+      final errorBody = json.decode(response.body);
+      throw Exception(errorBody['error'] ?? errorBody['message'] ?? 'Failed to start conversation');
+    }
+  }
+
+  // Fetch project users
+  static Future<Map<String, dynamic>> fetchProjectUsers() async {
+    final headers = await _getHeaders();
+    final response = await http.get(
+      Uri.parse('$apiUrl/project_users'),
+      headers: headers,
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('Failed to load project users');
+    }
+  }
+
   // ======================================================= DECISIONS =======================================================
 
   static Future<Map<String, dynamic>> fetchDecisions() async {
@@ -252,10 +306,38 @@ class ApiService {
   }
 
   // Fetch deposits
-  static Future<Map<String, dynamic>> fetchDeposits() async {
+  static Future<Map<String, dynamic>> fetchDeposits({
+    int page = 1,
+    int limit = 10,
+    String sort = 'created_at',
+    String order = 'desc',
+    String? search,
+    String? depositTypeId,
+    String? depositTypeCategoryId,
+    String? dateFrom,
+    String? dateTo,
+    String? amountMin,
+    String? amountMax,
+  }) async {
     final headers = await _getHeaders();
+    final queryParameters = <String, String>{
+      'page': page.toString(),
+      'limit': limit.toString(),
+      'sort': sort,
+      'order': order,
+      if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
+      if (depositTypeId != null && depositTypeId.trim().isNotEmpty) 'deposit_type_id': depositTypeId.trim(),
+      if (depositTypeCategoryId != null && depositTypeCategoryId.trim().isNotEmpty)
+        'deposit_type_category_id': depositTypeCategoryId.trim(),
+      if (dateFrom != null && dateFrom.trim().isNotEmpty) 'date_from': dateFrom.trim(),
+      if (dateTo != null && dateTo.trim().isNotEmpty) 'date_to': dateTo.trim(),
+      if (amountMin != null && amountMin.trim().isNotEmpty) 'amount_min': amountMin.trim(),
+      if (amountMax != null && amountMax.trim().isNotEmpty) 'amount_max': amountMax.trim(),
+    };
+
+    final uri = Uri.parse('$apiUrl/deposits').replace(queryParameters: queryParameters);
     final response = await http.get(
-      Uri.parse('$apiUrl/deposits?order=desc&sort=created_at&limit=100'),
+      uri,
       headers: headers,
     );
 
