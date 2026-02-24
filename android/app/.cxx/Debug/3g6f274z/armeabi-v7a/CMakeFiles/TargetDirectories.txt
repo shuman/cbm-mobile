@@ -1,0 +1,2 @@
+/Users/jobaerahmed/Sites/cbm-mobile/android/app/.cxx/Debug/3g6f274z/armeabi-v7a/CMakeFiles/edit_cache.dir
+/Users/jobaerahmed/Sites/cbm-mobile/android/app/.cxx/Debug/3g6f274z/armeabi-v7a/CMakeFiles/rebuild_cache.dir

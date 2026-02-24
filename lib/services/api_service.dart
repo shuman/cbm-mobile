@@ -3,8 +3,40 @@ import 'package:http/http.dart' as http;
 import '../utils/constants.dart';
 import '../utils/storage_util.dart';
 import '../utils/app_exceptions.dart';
+import 'session_service.dart';
 
 class ApiService {
+  static void _handleSessionExpired(http.Response response, {Map<String, dynamic>? data}) {
+    final statusCode = response.statusCode;
+    final message = data?['message']?.toString().toLowerCase() ?? '';
+
+    final isExpiredByStatus = statusCode == 401 || statusCode == 419;
+    final isExpiredByMessage =
+        message.contains('session expired') ||
+        message.contains('token expired') ||
+        message.contains('invalid token') ||
+        message.contains('unauthenticated') ||
+        message.contains('unauthorized');
+
+    if (isExpiredByStatus || isExpiredByMessage) {
+      StorageUtil.clearAll();
+      SessionService.instance.notifySessionExpired();
+      throw AppException('Session expired. Please log in again.');
+    }
+  }
+
+  static Map<String, dynamic> _decodeBodySafe(http.Response response) {
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+      return {};
+    } catch (_) {
+      return {};
+    }
+  }
+
   /// Check if error response indicates insufficient permissions
   static bool _isPermissionError(Map<String, dynamic>? data) {
     if (data == null) return false;
@@ -16,10 +48,13 @@ class ApiService {
 
   /// Helper method to handle API response and throw appropriate exceptions
   static Map<String, dynamic> _handleResponse(http.Response response) {
-    final data = jsonDecode(response.body);
+    final data = _decodeBodySafe(response);
+
+    _handleSessionExpired(response, data: data);
 
     if (response.statusCode == 200 || response.statusCode == 201) {
-      return data;
+      if (data.isNotEmpty) return data;
+      return jsonDecode(response.body);
     }
 
     // Check for permission errors
@@ -70,6 +105,7 @@ class ApiService {
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
+      _handleSessionExpired(response, data: _decodeBodySafe(response));
       throw Exception('Failed to load projects');
     }
   }
@@ -95,6 +131,15 @@ class ApiService {
     return _handleResponse(response);
   }
 
+  static Future<Map<String, dynamic>> fetchMemberDetails(String memberId) async {
+    final headers = await _getHeaders();
+    final response = await http.get(
+      Uri.parse('$apiUrl/payments-dues/member/$memberId'),
+      headers: headers,
+    );
+    return _handleResponse(response);
+  }
+
   // ======================================================= MESSAGING =======================================================
 
   static Future<Map<String, dynamic>> fetchChannels() async {
@@ -115,6 +160,7 @@ class ApiService {
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
+      _handleSessionExpired(response, data: _decodeBodySafe(response));
       throw Exception('Failed to load direct conversations');
     }
   }
@@ -128,6 +174,7 @@ class ApiService {
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
+      _handleSessionExpired(response, data: _decodeBodySafe(response));
       throw Exception('Failed to load channel messages');
     }
   }
@@ -142,6 +189,7 @@ class ApiService {
     if (response.statusCode == 200 || response.statusCode == 201) {
       return json.decode(response.body);
     } else {
+      _handleSessionExpired(response, data: _decodeBodySafe(response));
       throw Exception('Failed to send message: ${response.body}');
     }
   }
@@ -155,6 +203,7 @@ class ApiService {
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
+      _handleSessionExpired(response, data: _decodeBodySafe(response));
       throw Exception('Failed to load direct messages');
     }
   }
@@ -169,6 +218,7 @@ class ApiService {
     if (response.statusCode == 200 || response.statusCode == 201) {
       return json.decode(response.body);
     } else {
+      _handleSessionExpired(response, data: _decodeBodySafe(response));
       throw Exception('Failed to send message: ${response.body}');
     }
   }
@@ -182,6 +232,7 @@ class ApiService {
     if (response.statusCode == 200) {
       return json.decode(response.body);
     } else {
+      _handleSessionExpired(response, data: _decodeBodySafe(response));
       throw Exception('Failed to mark as read');
     }
   }
@@ -205,7 +256,8 @@ class ApiService {
     if (response.statusCode == 200 || response.statusCode == 201) {
       return json.decode(response.body);
     } else {
-      final errorBody = json.decode(response.body);
+      final errorBody = _decodeBodySafe(response);
+      _handleSessionExpired(response, data: errorBody);
       throw Exception(errorBody['error'] ?? errorBody['message'] ?? 'Failed to create channel');
     }
   }
@@ -221,7 +273,8 @@ class ApiService {
     if (response.statusCode == 200 || response.statusCode == 201) {
       return json.decode(response.body);
     } else {
-      final errorBody = json.decode(response.body);
+      final errorBody = _decodeBodySafe(response);
+      _handleSessionExpired(response, data: errorBody);
       throw Exception(errorBody['error'] ?? errorBody['message'] ?? 'Failed to start conversation');
     }
   }
@@ -236,6 +289,7 @@ class ApiService {
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
+      _handleSessionExpired(response, data: _decodeBodySafe(response));
       throw Exception('Failed to load project users');
     }
   }
@@ -263,6 +317,7 @@ class ApiService {
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
+      _handleSessionExpired(response, data: _decodeBodySafe(response));
       throw Exception('Failed to load decisions');
     }
   }
@@ -276,6 +331,7 @@ class ApiService {
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
+      _handleSessionExpired(response, data: _decodeBodySafe(response));
       throw Exception('Failed to load decision details');
     }
   }
@@ -289,6 +345,7 @@ class ApiService {
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
+      _handleSessionExpired(response, data: _decodeBodySafe(response));
       throw Exception('Failed to load timeline');
     }
   }
@@ -302,6 +359,7 @@ class ApiService {
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
+      _handleSessionExpired(response, data: _decodeBodySafe(response));
       throw Exception('Failed to load comments');
     }
   }
@@ -338,6 +396,7 @@ class ApiService {
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
+      _handleSessionExpired(response, data: _decodeBodySafe(response));
       throw Exception('Failed to load users');
     }
   }
@@ -355,6 +414,7 @@ class ApiService {
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as Map<String, dynamic>;
     } else {
+      _handleSessionExpired(response, data: _decodeBodySafe(response));
       throw Exception('Failed to load deposit details');
     }
   }
@@ -370,6 +430,7 @@ class ApiService {
     if (response.statusCode == 200 || response.statusCode == 201) {
       return json.decode(response.body);
     } else {
+      _handleSessionExpired(response, data: _decodeBodySafe(response));
       throw Exception('Failed to add deposit: ${response.body}');
     }
   }
@@ -413,6 +474,7 @@ class ApiService {
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
+      _handleSessionExpired(response, data: _decodeBodySafe(response));
       throw Exception('Failed to load deposits');
     }
   }
@@ -427,6 +489,7 @@ class ApiService {
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
+      _handleSessionExpired(response, data: _decodeBodySafe(response));
       throw Exception('Failed to load deposit types');
     }
   }
@@ -452,6 +515,7 @@ class ApiService {
     if (response.statusCode == 200 || response.statusCode == 201) {
       return json.decode(response.body);
     } else {
+      _handleSessionExpired(response, data: _decodeBodySafe(response));
       throw Exception('Failed to add expense: ${response.body}');
     }
   }
@@ -466,6 +530,7 @@ class ApiService {
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
+      _handleSessionExpired(response, data: _decodeBodySafe(response));
       throw Exception('Failed to load expense types');
     }
   }

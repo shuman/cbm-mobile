@@ -7,6 +7,7 @@ import 'auth/auth_bloc.dart';
 import 'services/auth_service.dart';
 import 'services/notification_service.dart';
 import 'services/message_notification_manager.dart';
+import 'services/session_service.dart';
 import 'theme/app_theme.dart';
 import 'router/app_router.dart';
 import 'router/router_notifier.dart';
@@ -31,6 +32,7 @@ class _MyAppState extends State<MyApp> {
   late final RouterNotifier _routerNotifier;
   late final GoRouter _router;
   StreamSubscription<AuthState>? _authSubscription;
+  StreamSubscription<void>? _sessionExpiredSubscription;
 
   @override
   void initState() {
@@ -40,6 +42,10 @@ class _MyAppState extends State<MyApp> {
     _router = AppRouter.createRouter(_routerNotifier);
 
     _authSubscription = _authBloc.stream.listen(_onAuthStateChanged);
+    _sessionExpiredSubscription =
+        SessionService.instance.onSessionExpired.listen((_) {
+      _authBloc.add(LogoutEvent());
+    });
   }
 
   void _onAuthStateChanged(AuthState state) {
@@ -53,6 +59,7 @@ class _MyAppState extends State<MyApp> {
   @override
   void dispose() {
     _authSubscription?.cancel();
+    _sessionExpiredSubscription?.cancel();
     MessageNotificationManager().stop();
     _routerNotifier.dispose();
     _authBloc.close();

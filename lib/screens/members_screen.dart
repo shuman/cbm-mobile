@@ -4,6 +4,7 @@ import '../theme/app_theme.dart';
 import '../utils/app_exceptions.dart';
 import 'widgets/app_drawer.dart';
 import 'widgets/empty_state.dart';
+import 'widgets/member_detail_sheet.dart';
 
 class MembersScreen extends StatefulWidget {
   const MembersScreen({super.key});
@@ -216,20 +217,25 @@ class _MembersScreenState extends State<MembersScreen> {
     );
   }
 
+  String? _extractMemberId(dynamic member) {
+    final directId = member['id']?.toString();
+    if (directId != null && directId.isNotEmpty) return directId;
+
+    final userId = member['user_id']?.toString();
+    if (userId != null && userId.isNotEmpty) return userId;
+
+    final nestedUserId = member['user']?['id']?.toString();
+    if (nestedUserId != null && nestedUserId.isNotEmpty) return nestedUserId;
+
+    return null;
+  }
+
   Color _getRoleColor(String role) {
     final lowerRole = role.toLowerCase();
     if (lowerRole.contains('admin') || lowerRole.contains('owner')) return AppColors.error;
     if (lowerRole.contains('manager')) return AppColors.primary;
     if (lowerRole.contains('lead')) return AppColors.info;
     return AppColors.success;
-  }
-
-  Color _getInvitationColor(String status) {
-    final lowerStatus = status.toLowerCase();
-    if (lowerStatus.contains('accepted')) return AppColors.success;
-    if (lowerStatus.contains('pending')) return AppColors.warning;
-    if (lowerStatus.contains('rejected')) return AppColors.error;
-    return AppColors.info;
   }
 
   String _formatDate(String dateStr) {
@@ -242,6 +248,7 @@ class _MembersScreenState extends State<MembersScreen> {
   }
 
   void _showMemberDetail(dynamic member) {
+    final memberId = _extractMemberId(member);
     final name = member['user']?['name']?.toString() ?? member['invited_name']?.toString() ?? 'Unknown';
     final email = member['user']?['email']?.toString() ?? member['invited_email']?.toString() ?? '';
     final role = member['role']?.toString() ?? 'Member';
@@ -256,135 +263,18 @@ class _MembersScreenState extends State<MembersScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.6,
-        decoration: const BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(16),
-            topRight: Radius.circular(16),
-          ),
-        ),
-        child: Column(
-          children: [
-            Container(
-              margin: const EdgeInsets.symmetric(vertical: 12),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.divider,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: CircleAvatar(
-                        radius: 40,
-                        backgroundColor: AppColors.primary.withOpacity(0.1),
-                        child: Text(
-                          name.isNotEmpty ? name[0].toUpperCase() : '?',
-                          style: const TextStyle(
-                            color: AppColors.primary,
-                            fontSize: 32,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      name,
-                      style: AppTextStyles.h2,
-                      textAlign: TextAlign.center,
-                    ),
-                    const Divider(height: 32),
-                    Row(
-                      children: [
-                        if (!isActive)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: AppColors.textDisabled.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              'INACTIVE',
-                              style: AppTextStyles.caption.copyWith(
-                                color: AppColors.textDisabled,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        if (!isActive && invitationStatus != null) const SizedBox(width: 8),
-                        if (invitationStatus != null && invitationStatus != 'accepted')
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: _getInvitationColor(invitationStatus).withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              invitationStatus.toUpperCase(),
-                              style: AppTextStyles.caption.copyWith(
-                                color: _getInvitationColor(invitationStatus),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    if (!isActive || (invitationStatus != null && invitationStatus != 'accepted'))
-                      const SizedBox(height: 16),
-                    _buildDetailRow('Role', role),
-                    const SizedBox(height: 12),
-                    if (memberCode != null) ...[
-                      _buildDetailRow('Member Code', memberCode),
-                      const SizedBox(height: 12),
-                    ],
-                    if (email.isNotEmpty) ...[
-                      _buildDetailRow('Email', email),
-                      const SizedBox(height: 12),
-                    ],
-                    if (phone.isNotEmpty) ...[
-                      _buildDetailRow('Phone', phone),
-                      const SizedBox(height: 12),
-                    ],
-                    if (address.isNotEmpty) ...[
-                      _buildDetailRow('Address', address),
-                      const SizedBox(height: 12),
-                    ],
-                    if (joinedAt.isNotEmpty)
-                      _buildDetailRow('Joined', _formatDate(joinedAt)),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
+      builder: (context) => MemberDetailSheet(
+        memberId: memberId,
+        name: name,
+        email: email,
+        phone: phone,
+        address: address,
+        role: role,
+        memberCode: memberCode,
+        joinedAt: joinedAt,
+        isActive: isActive,
+        invitationStatus: invitationStatus,
       ),
-    );
-  }
-
-  Widget _buildDetailRow(String label, String value) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 100,
-          child: Text(label, style: AppTextStyles.bodySecondary),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w600),
-          ),
-        ),
-      ],
     );
   }
 }

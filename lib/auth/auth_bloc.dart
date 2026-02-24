@@ -15,6 +15,13 @@ class LoginEvent extends AuthEvent {
   LoginEvent({required this.email, required this.password});
 }
 
+class Verify2FAEvent extends AuthEvent {
+  final String twoFaToken;
+  final String code;
+
+  Verify2FAEvent({required this.twoFaToken, required this.code});
+}
+
 class LogoutEvent extends AuthEvent {}
 
 // States
@@ -48,6 +55,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   AuthBloc({required this.authService}) : super(AuthLoadingState()) {
     on<CheckAuthStatusEvent>(_checkAuthStatus);
     on<LoginEvent>(_login);
+    on<Verify2FAEvent>(_verify2FA);
     on<LogoutEvent>(_logout);
   }
 
@@ -71,9 +79,9 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     if (kDebugMode) debugPrint('[AuthBloc] Login started');
     emit(AuthLoadingState());
     try {
-      final result = await AuthService.login(event.email, event.password);
+      final result = await authService.login(event.email, event.password);
       if (kDebugMode) debugPrint('[AuthBloc] Login result: ${result.keys.join(", ")}');
-      
+
       if (result['requires_2fa'] == true) {
         emit(Auth2FARequiredState(
           result['two_fa_token'],
@@ -81,7 +89,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         ));
         return;
       }
-      
+
       if (result['success'] == true && result['token'] != null) {
         emit(AuthAuthenticatedState(result['token'], user: result['user']));
       } else {
@@ -89,6 +97,23 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       }
     } catch (e) {
       emit(AuthErrorState('Login failed: ${e.toString()}'));
+    }
+  }
+
+  Future<void> _verify2FA(Verify2FAEvent event, Emitter<AuthState> emit) async {
+    if (kDebugMode) debugPrint('[AuthBloc] 2FA verify started');
+    emit(AuthLoadingState());
+    try {
+      final result = await authService.verify2FA(event.twoFaToken, event.code);
+      if (kDebugMode) debugPrint('[AuthBloc] 2FA verify result: ${result.keys.join(", ")}');
+
+      if (result['success'] == true && result['token'] != null) {
+        emit(AuthAuthenticatedState(result['token'], user: result['user']));
+      } else {
+        emit(AuthErrorState(result['error'] ?? '2FA verification failed'));
+      }
+    } catch (e) {
+      emit(AuthErrorState('2FA verification failed: ${e.toString()}'));
     }
   }
 
