@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../services/api_service.dart';
 import '../services/websocket_service.dart';
 import '../services/message_notification_manager.dart';
 import '../theme/app_theme.dart';
+import '../utils/app_exceptions.dart';
 import 'widgets/app_drawer.dart';
 
 class MessagingScreen extends StatefulWidget {
@@ -19,6 +21,7 @@ class _MessagingScreenState extends State<MessagingScreen> with SingleTickerProv
   List<Map<String, dynamic>> directConversations = [];
   bool isLoading = true;
   String? error;
+  bool isPermissionError = false;
   late AnimationController _animationController;
 
   final MessageNotificationManager _manager = MessageNotificationManager();
@@ -79,6 +82,7 @@ class _MessagingScreenState extends State<MessagingScreen> with SingleTickerProv
     setState(() {
       isLoading = true;
       error = null;
+      isPermissionError = false;
     });
 
     try {
@@ -96,10 +100,18 @@ class _MessagingScreenState extends State<MessagingScreen> with SingleTickerProv
         isLoading = false;
       });
       _animationController.forward();
+    } on PermissionException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        error = e.message;
+        isPermissionError = true;
+        isLoading = false;
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         error = e.toString();
+        isPermissionError = false;
         isLoading = false;
       });
     }
@@ -220,13 +232,26 @@ class _MessagingScreenState extends State<MessagingScreen> with SingleTickerProv
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.error_outline, size: 64, color: AppColors.error),
+                        Icon(
+                          isPermissionError ? Icons.lock_outline : Icons.error_outline,
+                          size: 64,
+                          color: isPermissionError ? AppColors.warning : AppColors.error,
+                        ),
                         const SizedBox(height: 16),
-                        Text('Failed to load messages', style: AppTextStyles.h3),
+                        Text(
+                          isPermissionError ? 'Access Denied' : 'Failed to load messages',
+                          style: AppTextStyles.h3,
+                        ),
                         const SizedBox(height: 8),
                         Text(error!, style: AppTextStyles.caption, textAlign: TextAlign.center),
                         const SizedBox(height: 24),
                         ElevatedButton(onPressed: _loadData, child: const Text('Retry')),
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: () => context.go('/home'),
+                          icon: const Icon(Icons.home_outlined),
+                          label: const Text('Go Home'),
+                        ),
                       ],
                     ),
                   )
@@ -287,6 +312,7 @@ class _MessagingScreenState extends State<MessagingScreen> with SingleTickerProv
   }
 
   void _showCreateChannelDialog() {
+    final rootContext = context;
     final nameController = TextEditingController();
     final descriptionController = TextEditingController();
     List<dynamic> selectedMemberIds = [];
@@ -442,26 +468,74 @@ class _MessagingScreenState extends State<MessagingScreen> with SingleTickerProv
                           });
 
                           try {
+                            debugPrint('[CreateChannel] Starting channel creation...');
+                            debugPrint('[CreateChannel] Name: $name, Members: ${selectedMemberIds.length}');
+
                             final result = await ApiService.createChannel(
                               name: name,
                               description: description.isEmpty ? null : description,
                               memberIds: selectedMemberIds,
                             );
 
-                            if (result['success'] == true && mounted) {
-                              Navigator.of(dialogContext).pop();
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Channel #$name created!'),
-                                  backgroundColor: AppColors.success,
-                                ),
-                              );
-                              _loadData(); // Refresh the list
+                            debugPrint('[CreateChannel] API Response: $result');
+                            debugPrint('[CreateChannel] Success value: ${result['success']}');
+                            debugPrint('[CreateChannel] Items type: ${result['items'].runtimeType}');
+                            debugPrint('[CreateChannel] Items value: ${result['items']}');
+
+                            final success = result['success'] == true || result['success'] == 1;
+                            if (!success) {
+                              debugPrint('[CreateChannel] Success is not true/1, error');
+                              if (!dialogContext.mounted) return;
+                              setDialogState(() {
+                                isCreating = false;
+                                dialogError = 'Failed to create channel';
+                              });
+                              return;
+                            }
+
+                            final channelData = result['items'] as Map<String, dynamic>?;
+                            debugPrint('[CreateChannel] Channel data: $channelData');
+                            final channelId = channelData?['id']?.toString();
+                            debugPrint('[CreateChannel] Extracted channel ID: $channelId');
+
+                            if (channelId == null) {
+                              debugPrint('[CreateChannel] Channel ID is null, error');
+                              if (!dialogContext.mounted) return;
+                              setDialogState(() {
+                                isCreating = false;
+                                dialogError = 'Invalid response: missing channel ID';
+                              });
+                              return;
+                            }
+
+                            debugPrint('[CreateChannel] Valid channel ID, closing dialog');
+                            if (!mounted) return;
+                            Navigator.of(dialogContext).pop();
+
+                            ScaffoldMessenger.of(rootContext).showSnackBar(
+                              SnackBar(
+                                content: Text('Channel #$name created!'),
+                                backgroundColor: AppColors.success,
+                              ),
+                            );
+
+                            debugPrint('[CreateChannel] Starting background refresh...');
+                            _loadData();
+
+                            if (mounted) {
+                              debugPrint('[CreateChannel] Waiting before navigation...');
+                              await Future.delayed(const Duration(milliseconds: 300));
+                              debugPrint('[CreateChannel] Navigating to channel: $channelId');
+                              rootContext.push('/channel/$channelId', extra: {
+                                'channelName': name,
+                              });
                             }
                           } catch (e) {
+                            debugPrint('[CreateChannel] Exception caught: $e');
+                            if (!dialogContext.mounted) return;
                             setDialogState(() {
                               isCreating = false;
-                              dialogError = e.toString();
+                              dialogError = 'Error: ${e.toString()}';
                             });
                           }
                         },
@@ -489,6 +563,7 @@ class _MessagingScreenState extends State<MessagingScreen> with SingleTickerProv
   }
 
   void _showStartDirectMessageDialog() {
+    final rootContext = context;
     dynamic selectedUserId;
     List<Map<String, dynamic>> projectUsers = [];
     bool isLoadingUsers = true;
@@ -611,24 +686,72 @@ class _MessagingScreenState extends State<MessagingScreen> with SingleTickerProv
                           });
 
                           try {
+                            debugPrint('[CreateDirectConversation] Starting conversation creation...');
+                            debugPrint('[CreateDirectConversation] Selected user: $selectedUserId');
+
                             final result = await ApiService.startDirectConversation(selectedUserId!);
 
-                            if (result['success'] == true && mounted) {
-                              Navigator.of(dialogContext).pop();
-                              final otherUser = result['items']?['other_user'];
-                              final userName = otherUser?['name'] ?? 'Unknown User';
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Started conversation with $userName!'),
-                                  backgroundColor: AppColors.success,
-                                ),
-                              );
-                              _loadData(); // Refresh the list
+                            debugPrint('[CreateDirectConversation] API Response: $result');
+                            debugPrint('[CreateDirectConversation] Success value: ${result['success']}');
+                            debugPrint('[CreateDirectConversation] Items type: ${result['items'].runtimeType}');
+                            debugPrint('[CreateDirectConversation] Items value: ${result['items']}');
+
+                            final success = result['success'] == true || result['success'] == 1;
+                            if (!success) {
+                              debugPrint('[CreateDirectConversation] Success is not true/1, error');
+                              if (!dialogContext.mounted) return;
+                              setDialogState(() {
+                                isCreating = false;
+                                dialogError = 'Failed to start conversation';
+                              });
+                              return;
+                            }
+
+                            final conversationData = result['items'] as Map<String, dynamic>?;
+                            debugPrint('[CreateDirectConversation] Conversation data: $conversationData');
+                            final conversationId = conversationData?['id']?.toString();
+                            final otherUser = conversationData?['other_user'] as Map<String, dynamic>?;
+                            final userName = otherUser?['name']?.toString() ?? 'Unknown User';
+                            debugPrint('[CreateDirectConversation] Extracted conversation ID: $conversationId, user: $userName');
+
+                            if (conversationId == null) {
+                              debugPrint('[CreateDirectConversation] Conversation ID is null, error');
+                              if (!dialogContext.mounted) return;
+                              setDialogState(() {
+                                isCreating = false;
+                                dialogError = 'Invalid response: missing conversation ID';
+                              });
+                              return;
+                            }
+
+                            debugPrint('[CreateDirectConversation] Valid conversation ID, closing dialog');
+                            if (!mounted) return;
+                            Navigator.of(dialogContext).pop();
+
+                            ScaffoldMessenger.of(rootContext).showSnackBar(
+                              SnackBar(
+                                content: Text('Started conversation with $userName!'),
+                                backgroundColor: AppColors.success,
+                              ),
+                            );
+
+                            debugPrint('[CreateDirectConversation] Starting background refresh...');
+                            _loadData();
+
+                            if (mounted) {
+                              debugPrint('[CreateDirectConversation] Waiting before navigation...');
+                              await Future.delayed(const Duration(milliseconds: 300));
+                              debugPrint('[CreateDirectConversation] Navigating to conversation: $conversationId');
+                              rootContext.push('/direct/$conversationId', extra: {
+                                'recipientName': userName,
+                              });
                             }
                           } catch (e) {
+                            debugPrint('[CreateDirectConversation] Exception caught: $e');
+                            if (!dialogContext.mounted) return;
                             setDialogState(() {
                               isCreating = false;
-                              dialogError = e.toString();
+                              dialogError = 'Error: ${e.toString()}';
                             });
                           }
                         },

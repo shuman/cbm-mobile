@@ -9,6 +9,7 @@ import '../screens/messaging_screen.dart';
 import '../screens/channel_detail_screen.dart';
 import '../screens/direct_conversation_screen.dart';
 import '../screens/decisions_screen.dart';
+import '../screens/decision_detail_screen.dart';
 import '../screens/notices_screen.dart';
 import '../screens/files_screen.dart';
 import '../screens/members_screen.dart';
@@ -97,7 +98,7 @@ class AppRouter {
               final channelId = state.pathParameters['channelId']!;
               final extra = state.extra as Map<String, dynamic>?;
               final channelName = extra?['channelName']?.toString() ?? 'Channel';
-              
+
               return BlocProvider(
                 create: (context) => MessageBloc(),
                 child: ChannelDetailScreen(
@@ -113,7 +114,7 @@ class AppRouter {
               final conversationId = state.pathParameters['conversationId']!;
               final extra = state.extra as Map<String, dynamic>?;
               final recipientName = extra?['recipientName']?.toString() ?? 'User';
-              
+
               return BlocProvider(
                 create: (context) => MessageBloc(),
                 child: DirectConversationScreen(
@@ -128,6 +129,21 @@ class AppRouter {
             pageBuilder: (context, state) => const NoTransitionPage(
               child: DecisionsScreen(),
             ),
+            routes: [
+              GoRoute(
+                path: ':decisionId',
+                builder: (context, state) {
+                  final decisionId = state.pathParameters['decisionId']!;
+                  final extra = state.extra as Map<String, dynamic>?;
+                  final title = extra?['title']?.toString() ?? 'Discussion';
+
+                  return DecisionDetailScreen(
+                    decisionId: decisionId,
+                    title: title,
+                  );
+                },
+              ),
+            ],
           ),
           GoRoute(
             path: '/notices',

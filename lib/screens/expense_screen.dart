@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/app_exceptions.dart';
 import 'widgets/app_drawer.dart';
 import 'widgets/detail_sheet_helpers.dart' as detailSheet;
 import 'widgets/empty_state.dart';
@@ -18,6 +19,7 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
   List<dynamic> expenses = [];
   bool isLoading = true;
   String? error;
+  bool isPermissionError = false;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String? _selectedStatus;
@@ -95,6 +97,7 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
     setState(() {
       isLoading = true;
       error = null;
+      isPermissionError = false;
     });
 
     try {
@@ -104,10 +107,18 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
         expenses = response['items'] ?? [];
         isLoading = false;
       });
+    } on PermissionException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        error = e.message;
+        isPermissionError = true;
+        isLoading = false;
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         error = e.toString();
+        isPermissionError = false;
         isLoading = false;
       });
     }
@@ -135,16 +146,24 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.error_outline, size: 64, color: AppColors.error),
+                      Icon(
+                        isPermissionError ? Icons.lock_outline : Icons.error_outline,
+                        size: 64,
+                        color: isPermissionError ? AppColors.warning : AppColors.error,
+                      ),
                       const SizedBox(height: 16),
-                      Text('Failed to load expenses', style: AppTextStyles.h3),
+                      Text(
+                        isPermissionError ? 'Access Denied' : 'Failed to load expenses',
+                        style: AppTextStyles.h3,
+                      ),
                       const SizedBox(height: 8),
                       Text(error!, style: AppTextStyles.caption, textAlign: TextAlign.center),
                       const SizedBox(height: 24),
-                      ElevatedButton(
-                        onPressed: _loadExpenses,
-                        child: const Text('Retry'),
-                      ),
+                      if (!isPermissionError)
+                        ElevatedButton(
+                          onPressed: _loadExpenses,
+                          child: const Text('Retry'),
+                        ),
                     ],
                   ),
                 )
@@ -614,7 +633,7 @@ class _ExpenseScreenState extends State<ExpenseScreen> {
                           detailSheet.DetailRow(
                               label: 'Work Package', value: detailSheet.valueOrNA(expense['work_package_id'])),
                           detailSheet.DetailRow(
-                              label: 'Active', value: '${expense['is_active'] == true ? 'Yes' : 'No'}'),
+                              label: 'Active', value: expense['is_active'] == true ? 'Yes' : 'No'),
                         ],
                       ),
                       if (expense['description'] != null && expense['description'].toString().isNotEmpty) ...[

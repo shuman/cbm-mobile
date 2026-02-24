@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/app_exceptions.dart';
 import 'widgets/app_drawer.dart';
 import 'widgets/detail_sheet_helpers.dart' as detailSheet;
 import 'widgets/empty_state.dart';
@@ -22,6 +23,7 @@ class _DepositScreenState extends State<DepositScreen> {
   bool isLoading = true;
   bool isLoadingMore = false;
   String? error;
+  bool isPermissionError = false;
   final TextEditingController _searchController = TextEditingController();
   Timer? _searchDebounce;
   String _searchQuery = '';
@@ -89,6 +91,7 @@ class _DepositScreenState extends State<DepositScreen> {
         isLoadingMore = true;
       }
       error = null;
+      isPermissionError = false;
     });
 
     try {
@@ -117,10 +120,19 @@ class _DepositScreenState extends State<DepositScreen> {
         isLoading = false;
         isLoadingMore = false;
       });
+    } on PermissionException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        error = e.message;
+        isPermissionError = true;
+        isLoading = false;
+        isLoadingMore = false;
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         error = e.toString();
+        isPermissionError = false;
         isLoading = false;
         isLoadingMore = false;
       });
@@ -169,16 +181,24 @@ class _DepositScreenState extends State<DepositScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.error_outline, size: 64, color: AppColors.error),
+                      Icon(
+                        isPermissionError ? Icons.lock_outline : Icons.error_outline,
+                        size: 64,
+                        color: isPermissionError ? AppColors.warning : AppColors.error,
+                      ),
                       const SizedBox(height: 16),
-                      Text('Failed to load deposits', style: AppTextStyles.h3),
+                      Text(
+                        isPermissionError ? 'Access Denied' : 'Failed to load deposits',
+                        style: AppTextStyles.h3,
+                      ),
                       const SizedBox(height: 8),
                       Text(error!, style: AppTextStyles.caption, textAlign: TextAlign.center),
                       const SizedBox(height: 24),
-                      ElevatedButton(
-                        onPressed: _refreshFromFilters,
-                        child: const Text('Retry'),
-                      ),
+                      if (!isPermissionError)
+                        ElevatedButton(
+                          onPressed: _refreshFromFilters,
+                          child: const Text('Retry'),
+                        ),
                     ],
                   ),
                 )

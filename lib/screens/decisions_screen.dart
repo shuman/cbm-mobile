@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/app_exceptions.dart';
 import 'widgets/app_drawer.dart';
 import 'widgets/empty_state.dart';
 
@@ -15,6 +17,7 @@ class _DecisionsScreenState extends State<DecisionsScreen> {
   List<dynamic> decisions = [];
   bool isLoading = true;
   String? error;
+  bool isPermissionError = false;
 
   @override
   void initState() {
@@ -27,19 +30,43 @@ class _DecisionsScreenState extends State<DecisionsScreen> {
     setState(() {
       isLoading = true;
       error = null;
+      isPermissionError = false;
     });
 
     try {
-      final response = await ApiService.fetchDecisions();
+      final response = await ApiService.fetchDecisions(
+        sortBy: 'created_at',
+        sortDir: 'desc',
+        perPage: 15,
+        page: 1,
+      );
+      final payload = response['data'];
+      final rawList = payload is Map<String, dynamic>
+          ? payload['data']
+          : response['items'];
+
+      final allItems = rawList is List ? rawList : <dynamic>[];
+      final decisionItems = allItems
+          .whereType<Map<String, dynamic>>()
+          .toList();
+
       if (!mounted) return;
       setState(() {
-        decisions = response['items'] ?? [];
+        decisions = decisionItems;
+        isLoading = false;
+      });
+    } on PermissionException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        error = e.message;
+        isPermissionError = true;
         isLoading = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         error = e.toString();
+        isPermissionError = false;
         isLoading = false;
       });
     }
@@ -61,24 +88,32 @@ class _DecisionsScreenState extends State<DecisionsScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.error_outline, size: 64, color: AppColors.error),
+                        Icon(
+                          isPermissionError ? Icons.lock_outline : Icons.error_outline,
+                          size: 64,
+                          color: isPermissionError ? AppColors.warning : AppColors.error,
+                        ),
                         const SizedBox(height: 16),
-                        Text('Failed to load decisions', style: AppTextStyles.h3),
+                        Text(
+                          isPermissionError ? 'Access Denied' : 'Failed to load decisions',
+                          style: AppTextStyles.h3,
+                        ),
                         const SizedBox(height: 8),
                         Text(error!, style: AppTextStyles.caption, textAlign: TextAlign.center),
                         const SizedBox(height: 24),
-                        ElevatedButton(
-                          onPressed: _loadDecisions,
-                          child: const Text('Retry'),
-                        ),
+                        if (!isPermissionError)
+                          ElevatedButton(
+                            onPressed: _loadDecisions,
+                            child: const Text('Retry'),
+                          ),
                       ],
                     ),
                   )
                 : decisions.isEmpty
                     ? const EmptyState(
-                        icon: Icons.check_circle_outline,
+                        icon: Icons.ballot_outlined,
                         title: 'No Decisions',
-                        message: 'No decisions have been created yet',
+                        message: 'No discussions, polls, or voting items found',
                       )
                     : ListView.builder(
                         padding: const EdgeInsets.all(16),
@@ -96,12 +131,22 @@ class _DecisionsScreenState extends State<DecisionsScreen> {
     final status = decision['status']?.toString() ?? 'pending';
     final statusColor = _getStatusColor(status);
     final createdAt = decision['created_at']?.toString() ?? '';
+    final creatorName = decision['creator']?['name']?.toString() ?? 'Unknown';
+    final committeeName = decision['current_committee']?['name']?.toString() ??
+        decision['committee']?['name']?.toString() ??
+        'N/A';
+    final typeLabel = decision['type_label']?.toString() ?? 'Discussion';
+    final typeColor = _getTypeColor(decision['type']?.toString().toLowerCase() ?? 'discussion');
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
         onTap: () {
-          _showDecisionDetail(decision);
+          final decisionId = decision['id']?.toString();
+          final title = decision['title']?.toString() ?? 'Decision';
+          if (decisionId != null) {
+            context.push('/decisions/$decisionId', extra: {'title': title});
+          }
         },
         borderRadius: BorderRadius.circular(8),
         child: Padding(
@@ -128,6 +173,26 @@ class _DecisionsScreenState extends State<DecisionsScreen> {
                       style: AppTextStyles.caption.copyWith(
                         color: statusColor,
                         fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: typeColor.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: typeColor.withOpacity(0.3)),
+                    ),
+                    child: Text(
+                      typeLabel,
+                      style: AppTextStyles.caption.copyWith(
+                        color: typeColor,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
@@ -162,6 +227,31 @@ class _DecisionsScreenState extends State<DecisionsScreen> {
                   ],
                 ],
               ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(Icons.account_tree_outlined, size: 14, color: AppColors.textSecondary),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      committeeName,
+                      style: AppTextStyles.caption,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Icon(Icons.person_outline, size: 14, color: AppColors.textSecondary),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      creatorName,
+                      style: AppTextStyles.caption,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.right,
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
@@ -176,7 +266,23 @@ class _DecisionsScreenState extends State<DecisionsScreen> {
       case 'rejected':
         return AppColors.error;
       case 'pending':
+      case 'discussion':
+      case 'voting':
+      case 'forwarded':
         return AppColors.warning;
+      default:
+        return AppColors.textSecondary;
+    }
+  }
+
+  Color _getTypeColor(String type) {
+    switch (type.toLowerCase()) {
+      case 'discussion':
+        return AppColors.info;
+      case 'poll':
+        return Color(0xFF8b5cf6);
+      case 'voting':
+        return AppColors.success;
       default:
         return AppColors.textSecondary;
     }
@@ -189,83 +295,5 @@ class _DecisionsScreenState extends State<DecisionsScreen> {
     } catch (e) {
       return dateStr;
     }
-  }
-
-  void _showDecisionDetail(dynamic decision) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.7,
-        decoration: const BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(16),
-            topRight: Radius.circular(16),
-          ),
-        ),
-        child: Column(
-          children: [
-            Container(
-              margin: const EdgeInsets.symmetric(vertical: 12),
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.divider,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      decision['title']?.toString() ?? 'Untitled Decision',
-                      style: AppTextStyles.h2,
-                    ),
-                    const SizedBox(height: 16),
-                    _buildDetailRow('Status', decision['status']?.toString() ?? 'pending'),
-                    const SizedBox(height: 12),
-                    _buildDetailRow('Created', _formatDate(decision['created_at']?.toString() ?? '')),
-                    const SizedBox(height: 12),
-                    if (decision['deadline'] != null)
-                      _buildDetailRow('Deadline', _formatDate(decision['deadline']?.toString() ?? '')),
-                    const Divider(height: 32),
-                    if (decision['description'] != null) ...[
-                      Text('Description', style: AppTextStyles.h3),
-                      const SizedBox(height: 8),
-                      Text(
-                        decision['description']?.toString() ?? '',
-                        style: AppTextStyles.body,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDetailRow(String label, String value) {
-    return Row(
-      children: [
-        SizedBox(
-          width: 100,
-          child: Text(label, style: AppTextStyles.bodySecondary),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w600),
-          ),
-        ),
-      ],
-    );
   }
 }

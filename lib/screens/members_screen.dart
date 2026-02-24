@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/app_exceptions.dart';
 import 'widgets/app_drawer.dart';
 import 'widgets/empty_state.dart';
 
@@ -15,6 +16,7 @@ class _MembersScreenState extends State<MembersScreen> {
   List<dynamic> members = [];
   bool isLoading = true;
   String? error;
+  bool isPermissionError = false;
 
   @override
   void initState() {
@@ -27,6 +29,7 @@ class _MembersScreenState extends State<MembersScreen> {
     setState(() {
       isLoading = true;
       error = null;
+      isPermissionError = false;
     });
 
     try {
@@ -36,10 +39,18 @@ class _MembersScreenState extends State<MembersScreen> {
         members = response['items'] ?? [];
         isLoading = false;
       });
+    } on PermissionException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        error = e.message;
+        isPermissionError = true;
+        isLoading = false;
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         error = e.toString();
+        isPermissionError = false;
         isLoading = false;
       });
     }
@@ -61,16 +72,24 @@ class _MembersScreenState extends State<MembersScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.error_outline, size: 64, color: AppColors.error),
+                        Icon(
+                          isPermissionError ? Icons.lock_outline : Icons.error_outline,
+                          size: 64,
+                          color: isPermissionError ? AppColors.warning : AppColors.error,
+                        ),
                         const SizedBox(height: 16),
-                        Text('Failed to load members', style: AppTextStyles.h3),
+                        Text(
+                          isPermissionError ? 'Access Denied' : 'Failed to load members',
+                          style: AppTextStyles.h3,
+                        ),
                         const SizedBox(height: 8),
                         Text(error!, style: AppTextStyles.caption, textAlign: TextAlign.center),
                         const SizedBox(height: 24),
-                        ElevatedButton(
-                          onPressed: _loadMembers,
-                          child: const Text('Retry'),
-                        ),
+                        if (!isPermissionError)
+                          ElevatedButton(
+                            onPressed: _loadMembers,
+                            child: const Text('Retry'),
+                          ),
                       ],
                     ),
                   )

@@ -2,8 +2,46 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../utils/constants.dart';
 import '../utils/storage_util.dart';
+import '../utils/app_exceptions.dart';
 
 class ApiService {
+  /// Check if error response indicates insufficient permissions
+  static bool _isPermissionError(Map<String, dynamic>? data) {
+    if (data == null) return false;
+    final message = data['message']?.toString().toLowerCase() ?? '';
+    return message.contains('insufficient permissions') ||
+           message.contains('access denied') ||
+           message.contains('not authorized');
+  }
+
+  /// Helper method to handle API response and throw appropriate exceptions
+  static Map<String, dynamic> _handleResponse(http.Response response) {
+    final data = jsonDecode(response.body);
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return data;
+    }
+
+    // Check for permission errors
+    if (_isPermissionError(data)) {
+      throw PermissionException(
+        data['message']?.toString() ?? 'Insufficient permissions. You do not have access to this module.',
+      );
+    }
+
+    // Check for other failures
+    if (data['success'] == false) {
+      throw AppException(data['message']?.toString() ?? 'Request failed');
+    }
+
+    // Generic error handling
+    if (response.statusCode >= 500) {
+      throw ServerException();
+    }
+
+    throw AppException('Request failed with status ${response.statusCode}');
+  }
+
   static Future<Map<String, String>> _getHeaders({bool includeProjectId = true}) async {
     String? token = await StorageUtil.getToken();
     Map<String, String> headers = {
@@ -44,11 +82,7 @@ class ApiService {
       Uri.parse('$apiUrl/members'),
       headers: headers,
     );
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
-      throw Exception('Failed to load stats');
-    }
+    return _handleResponse(response);
   }
 
   // Fetch Members
@@ -58,11 +92,7 @@ class ApiService {
       Uri.parse('$apiUrl/members'),
       headers: headers,
     );
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
-      throw Exception('Failed to load members');
-    }
+    return _handleResponse(response);
   }
 
   // ======================================================= MESSAGING =======================================================
@@ -73,11 +103,7 @@ class ApiService {
       Uri.parse('$apiUrl/channels'),
       headers: headers,
     );
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
-      throw Exception('Failed to load channels');
-    }
+    return _handleResponse(response);
   }
 
   static Future<Map<String, dynamic>> fetchDirectConversations() async {
@@ -216,16 +242,67 @@ class ApiService {
 
   // ======================================================= DECISIONS =======================================================
 
-  static Future<Map<String, dynamic>> fetchDecisions() async {
+  static Future<Map<String, dynamic>> fetchDecisions({
+    int page = 1,
+    int perPage = 15,
+    String sortBy = 'created_at',
+    String sortDir = 'desc',
+  }) async {
     final headers = await _getHeaders();
+    final queryParameters = {
+      'sort_by': sortBy,
+      'sort_dir': sortDir,
+      'per_page': perPage.toString(),
+      'page': page.toString(),
+    };
+
     final response = await http.get(
-      Uri.parse('$apiUrl/decisions'),
+      Uri.parse('$apiUrl/decisions').replace(queryParameters: queryParameters),
       headers: headers,
     );
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
       throw Exception('Failed to load decisions');
+    }
+  }
+
+  static Future<Map<String, dynamic>> fetchDecisionDetail(String decisionId) async {
+    final headers = await _getHeaders();
+    final response = await http.get(
+      Uri.parse('$apiUrl/decisions/$decisionId'),
+      headers: headers,
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('Failed to load decision details');
+    }
+  }
+
+  static Future<Map<String, dynamic>> fetchDecisionTimeline(String decisionId, {int perPage = 50}) async {
+    final headers = await _getHeaders();
+    final response = await http.get(
+      Uri.parse('$apiUrl/decisions/$decisionId/timeline?per_page=$perPage'),
+      headers: headers,
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('Failed to load timeline');
+    }
+  }
+
+  static Future<Map<String, dynamic>> fetchDecisionComments(String decisionId, {bool threaded = true}) async {
+    final headers = await _getHeaders();
+    final response = await http.get(
+      Uri.parse('$apiUrl/decisions/$decisionId/comments?threaded=${threaded ? 'true' : 'false'}'),
+      headers: headers,
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('Failed to load comments');
     }
   }
 
@@ -237,11 +314,7 @@ class ApiService {
       Uri.parse('$apiUrl/notices'),
       headers: headers,
     );
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
-      throw Exception('Failed to load notices');
-    }
+    return _handleResponse(response);
   }
 
   // ======================================================= FILES =======================================================
@@ -252,11 +325,7 @@ class ApiService {
       Uri.parse('$apiUrl/files'),
       headers: headers,
     );
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
-      throw Exception('Failed to load files');
-    }
+    return _handleResponse(response);
   }
 
   // Fetch users
@@ -369,11 +438,7 @@ class ApiService {
       Uri.parse('$apiUrl/expenses'),
       headers: headers,
     );
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
-      throw Exception('Failed to load expenses');
-    }
+    return _handleResponse(response);
   }
 
   // Add expense
