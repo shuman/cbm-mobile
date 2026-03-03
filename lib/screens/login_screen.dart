@@ -113,17 +113,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   height: 100,
                 ),
                 const SizedBox(height: 48),
-                Text(
-                  'Welcome Back',
-                  style: AppTextStyles.h2,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Sign in to continue',
-                  style: AppTextStyles.bodySecondary,
-                  textAlign: TextAlign.center,
-                ),
                 const SizedBox(height: 32),
                 TextFormField(
                   controller: _emailController,
